@@ -4,15 +4,17 @@
 
 ## Useful links
 
+- [P2P development, support & consulting](https://novage.com.ua/)
 - [Demo](http://novage.com.ua/p2p-media-loader/demo.html)
+- [FAQ](https://github.com/Novage/p2p-media-loader/blob/master/FAQ.md)
 - [Overview](http://novage.com.ua/p2p-media-loader/overview.html)
 - [Technical overview](http://novage.com.ua/p2p-media-loader/technical-overview.html)
 - API documentation
-  - [Hls.js integration](https://github.com/novage/p2p-media-loader/p2p-media-loader-hlsjs)
-  - [Shaka Player integration](https://github.com/novage/p2p-media-loader/p2p-media-loader-shaka)
-  - [Core](https://github.com/novage/p2p-media-loader/p2p-media-loader-core)
+  - [Hls.js integration](../p2p-media-loader-hlsjs#p2p-media-loader---hlsjs-integration)
+  - [Shaka Player integration](../p2p-media-loader-shaka#p2p-media-loader---shaka-player-integration)
+  - [Core](../p2p-media-loader-core#p2p-media-loader-core)
 - JS CDN
   - [Core](https://cdn.jsdelivr.net/npm/p2p-media-loader-core@latest/build/)
   - [Hls.js integration](https://cdn.jsdelivr.net/npm/p2p-media-loader-hlsjs@latest/build/)
-  - [Shaka integration](https://cdn.jsdelivr.net/npm/p2p-media-loader-shaka@latest/build/)
+  - [Shaka Player integration](https://cdn.jsdelivr.net/npm/p2p-media-loader-shaka@latest/build/)
 

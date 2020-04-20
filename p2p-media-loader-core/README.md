@@ -1,9 +1,14 @@
 # P2P Media Loader Core
 
-Core functionality for P2P sharing of segmented media streams (i.e. HLS, DASH) using WebRTC.
+[![](https://data.jsdelivr.com/v1/package/npm/p2p-media-loader-core/badge)](https://www.jsdelivr.com/package/npm/p2p-media-loader-core)
+[![npm version](https://badge.fury.io/js/p2p-media-loader-core.svg)](https://npmjs.com/package/p2p-media-loader-core)
+
+Core functionality for P2P sharing of segmented media streams (i.e. HLS, MPEG-DASH) using WebRTC.
 
 Useful links:
+- [P2P development, support & consulting](https://novage.com.ua/)
 - [Demo](http://novage.com.ua/p2p-media-loader/demo.html)
+- [FAQ](https://github.com/Novage/p2p-media-loader/blob/master/FAQ.md)
 - [Overview](http://novage.com.ua/p2p-media-loader/overview.html)
 - [Technical overview](http://novage.com.ua/p2p-media-loader/technical-overview.html)
 - JS CDN
@@ -37,41 +42,67 @@ If `settings` is specified, then the default settings (shown below) will be over
 
 | Name | Type | Default Value | Description |
 | --- | ---- | ------ | ------ |
-| `cachedSegmentExpiration` | Integer | 300000 | Segment lifetime in cache. The segment is deleted from the cache if the last access time is greater than this value (in milliseconds)
-| `cachedSegmentsCount` | Integer | 30 | Max number of segments that can be stored in the cache
-| `requiredSegmentsPriority` | Integer | 1 | The maximum priority of the segments to be downloaded (if not available) as quickly as possible (i.e. via HTTP method)
+| `cachedSegmentExpiration` | Integer | 300000 | Segment lifetime in cache. The segment is deleted from the cache if the last access time is greater than this value (in milliseconds). Cached segments are shared over P2P network. Affects only default segments storage.
+| `cachedSegmentsCount` | Integer | 30 | Max number of segments that can be stored in the cache. Cached segments are shared over P2P network. Affects only default segments storage.
+| `requiredSegmentsPriority` | Integer | 1 | The maximum priority of the segments to be downloaded (if not available) as quickly as possible (i.e. via HTTP method). First segment that should be downloaded has priority 0.
 | `useP2P` | Boolean | true | Enable/Disable peers interaction
+| `consumeOnly` | Boolean | false | The peer will not upload segments data to the P2P network but still download from others.
+| `simultaneousHttpDownloads` | Integer | 2 | Max number of simultaneous downloads from HTTP source
+| `httpDownloadProbability` | Float | 0.1 | Probability of downloading remaining not downloaded segment in the segments queue via HTTP
+| `httpDownloadProbabilityInterval` | Integer | 1000 | Interval of the httpDownloadProbability check (in milliseconds)
+| `httpDownloadProbabilitySkipIfNoPeers` | Boolean | false | Don't download segments over HTTP randomly when there is no peers
+| `httpFailedSegmentTimeout` | Integer | 10000 | Timeout before trying to load a segment again via HTTP after failed attempt (in milliseconds)
+| `httpDownloadMaxPriority` | Integer | 20 | Segments with higher priority will not be downloaded over HTTP
+| `httpDownloadInitialTimeout` | Integer | 0 | Try to download initial segments over P2P if the value is > 0. But HTTP download will be forcibly enabled if there is no peers on tracker or single sequential segment P2P download is timed out (see `httpDownloadInitialTimeoutPerSegment`).
+| `httpDownloadInitialTimeoutPerSegment` | Integer | 4000 | If initial HTTP download timeout is enabled (see `httpDownloadInitialTimeout`) this parameter sets additional timeout for a single sequential segment download over P2P. It will cancel initial HTTP download timeout mode if a segment download is timed out.
+| `httpUseRanges` | Boolean | false | Use HTTP ranges requests where it is possible. Allows to continue (and not start over) aborted P2P downloads over HTTP.
 | `simultaneousP2PDownloads` | Integer | 3 | Max number of simultaneous downloads from peers
-| `httpDownloadProbability` | Float | 0.06 | Probability of downloading remaining not downloaded segment in the segments queue via HTTP
-| `httpDownloadProbabilityInterval` | Integer | 500 | Interval of the httpDownloadProbability check (in milliseconds)
-| `bufferedSegmentsCount` | Integer | 20 | Max number of the segments to be downloaded via HTTP or P2P methods
-| `trackerAnnounce` | String[] | [ "wss://tracker.btorrent.xyz/", "wss://tracker.openwebtorrent.com/" ] | Torrent trackers (announcers) to use
-| `webRtcMaxMessageSize` | number | 64 * 1024 - 1 | Max WebRTC message size. 64KiB - 1B should work with most of recent browsers. Set it to 16KiB for older browsers support. 
-| `p2pSegmentDownloadTimeout` | number | 60000 | Timeout to download a segment from a peer. If exceeded the peer is dropped. 
-| `rtcConfig` | RTCConfiguration | Object | An RTCConfiguration dictionary providing options to configure WebRTC connections.
+| `p2pDownloadMaxPriority` | Integer | 20 | Segments with higher priority will not be downloaded over P2P
+| `p2pSegmentDownloadTimeout` | Integer | 60000 | Time allowed for a segment to start downloading. This value only limits time needed for segment to start, not the time required for full download.
+| `webRtcMaxMessageSize` | Integer | 64 * 1024 - 1 | Max WebRTC message size. 64KiB - 1B should work with most of recent browsers. Set it to 16KiB for older browsers support.
+| `trackerAnnounce` | String[] | wss://tracker.novage.com.ua wss://tracker.openwebtorrent.com | WebTorrent trackers to use for announcement
+| `peerRequestsPerAnnounce` | Integer | 10 | Number of requested peers in each announce for each tracker. Maximum is 10.
+| `rtcConfig` | [RTCConfiguration](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/RTCPeerConnection#RTCConfiguration_dictionary) | Object | An [RTCConfiguration](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/RTCPeerConnection#RTCConfiguration_dictionary) dictionary providing options to configure WebRTC connections.
+| `segmentValidator` | Function | undefined | Segment validation callback - validates the data after it has been downloaded.<br><br>Arguments:<br>`segment` (Segment) - The segment object.<br>`method` (String) - Can be "http" or "p2p" only.<br>`peerId` (String) - The ID of the peer that the segment was downloaded from in case it is P2P download; and *undefined* for HTTP donwload.<br><br>Returns:<br>A promise - if resolved the segment considered to be valid, if rejected the error object will be passed to `SegmentError` event.
+| `xhrSetup` | Function | undefined | XMLHttpRequest setup callback. Handle it when you need additional setup for requests made by the library. If handled, expected a function with two arguments: xhr (XMLHttpRequest), url (String).
+| `segmentUrlBuilder` | Function | undefined | Allow to modify the segment URL before HTTP request. If handled, expected a function of one argument of type `Segment` that returns a `string` - generated segment URL.
+| `segmentsStorage` | Object | undefined | A storage for the downloaded segments. By default the segments are stored in JavaScript memory. Can be used to implement offline plabyack. See [SegmentsStorage](#segmentsstorage-interface) interface for details.
 
-### `loader.load(segments, swarmId)`
+### SegmentsStorage interface
+```typescript
+interface SegmentsStorage {
+    storeSegment(segment: Segment): Promise<void>;
+    getSegmentsMap(masterSwarmId: string): Promise<Map<string, {segment: Segment}>>;
+    getSegment(id: string, masterSwarmId: string): Promise<Segment | undefined>;
+    clean(lockedSementsfilter?: (id: string) => boolean): Promise<boolean>;
+    destroy(): Promise<void>;
+}
+```
+
+### `loader.load(segments, streamSwarmId)`
 
 Creates new queue of segments to download. Aborts all http and peer connections for segments that are not in the new load and emits `Events.SegmentAbort` event for each aborted event.
 
 Function args:
 - `segments` - array of `Segment` class instances with populated `url` and `priority` field;
-- `swarmId` - used for gathering peers in pool;
+- `streamSwarmId` - current swarm;
 
-### `loader.on(Events.SegmentLoaded, function (segment) {})`
+### `loader.on(Events.SegmentLoaded, function (segment, peerId) {})`
 
 Emitted when segment have been downloaded.
 
 Listener args:
 - `segment` - instance of `Segment` class with populated `url` and `data` fields;
+- `peerId` - Id of the peer the segment was downloaded from; `undefined` for HTTP method;
 
-### `loader.on(Events.SegmentError, function (segment, error) {})`
+### `loader.on(Events.SegmentError, function (segment, error, peerId) {})`
 
 Emitted when an error occurred while loading the segment.
 
 Listener args:
 - `segment` - url of the segment;
 - `error` - error details;
+- `peerId` - Id of the peer the error occured with; `undefined` for HTTP method;
 
 ### `loader.on(Events.SegmentAbort, function (segment) {})`
 
@@ -94,13 +125,14 @@ Emitted when a peer is disconnected.
 Listener args:
 - `peerId` - Id of the disconnected peer;
 
-### `loader.on(Events.PieceBytesDownloaded, function (method, bytes) {})`
+### `loader.on(Events.PieceBytesDownloaded, function (method, bytes, peerId) {})`
 
 Emitted when a segment piece downloaded.
 
-Listener args: 
+Listener args:
 - `method` - downloading method, possible values: `http`, `p2p`;
 - `bytes` - amount of bytes downloaded;
+- `peerId` - Id of the peer these bytes downloaded from; `undefined` for HTTP method;
 
 ### `loader.on(Events.PieceBytesUploaded, function (method, bytes) {})`
 
@@ -108,11 +140,16 @@ Emitted when a segment piece uploaded.
 
 Listener args:
 - `method` - uploading method, possible values: `p2p`;
-- `bytes` - amount of bytes downloaded;
+- `bytes` - amount of bytes uploaded;
+- `peerId` - Id of the peer these bytes uploaded to; `undefined` for HTTP method;
 
 ### `loader.getSettings()`
 
 Returns loader instance settings.
+
+### `loader.getDetails()`
+
+Returns loader instance details.
 
 ### `loader.getSegment(id)`
 
@@ -131,13 +168,13 @@ Destroys loader: abort all connections (http, tcp, peer), clears cached segments
 
 Events that are emitted by `HybridLoader`.
 
-- SegmentLoaded
-- SegmentError
-- SegmentAbort
-- PeerConnect
-- PeerClose
-- PieceBytesDownloaded
-- PieceBytesUploaded
+- [SegmentLoaded](#loaderoneventssegmentloaded-function-segment-peerid-)
+- [SegmentError](#loaderoneventssegmenterror-function-segment-error-peerid-)
+- [SegmentAbort](#loaderoneventssegmentabort-function-segment-)
+- [PeerConnect](#loaderoneventspeerconnect-function-peer-)
+- [PeerClose](#loaderoneventspeerclose-function-peerid-)
+- [PieceBytesDownloaded](#loaderoneventspiecebytesdownloaded-function-method-bytes-peerid-)
+- [PieceBytesUploaded](#loaderoneventspiecebytesuploaded-function-method-bytes-peerid-)
 
 ---
 
@@ -153,7 +190,19 @@ Instance contains:
 - `url`
     + a `String`
     + URL of the segment
-- `range`
+`masterSwarmId`
+    + a `String`
+    + segment's master swarm ID
+`masterManifestUri`
+    + a `String`
+    + segment's master manifest URI
+`streamId`
+    + a `String` or `undefined`
+    + segment's stream ID
+`sequence`
+    + a `String`
+    + segment's sequence ID
+- `range` or `undefined`
     + a `String`
     + must be valid HTTP Range header value or `undefined`
 - `priority`
@@ -161,12 +210,18 @@ Instance contains:
     + the lower value - the higher priority
     + default is `0`
 - `data`
-    + an `ArrayBuffer`
+    + an `ArrayBuffer` or `undefined`
     + available only when segment is fully loaded; subscribe to `SegmentLoaded`
       event for this very moment
-- `downloadSpeed`
+- `downloadSpeed` or `undefined`
     + a non-negative integer `Number`
     + download speed in bytes per millisecond or 0
+- `requestUrl`
+    + a `String` or `undefined`
+    + Request URL of the segment
+- `responseUrl`
+    + a `String` or `undefined`
+    + Response URL of the segment
 
 ---
 

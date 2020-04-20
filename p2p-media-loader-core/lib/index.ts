@@ -1,4 +1,5 @@
 /**
+ * @license Apache-2.0
  * Copyright 2018 Novage LLC.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +15,6 @@
  * limitations under the License.
  */
 
-export {LoaderInterface, Events, Segment} from "./loader-interface";
-export {default as HybridLoader} from "./hybrid-loader";
-export const version = "__VERSION__";
+export const version = "0.6.2";
+export * from "./loader-interface";
+export * from "./hybrid-loader";

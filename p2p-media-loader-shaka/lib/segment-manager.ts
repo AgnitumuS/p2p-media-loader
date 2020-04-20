@@ -15,12 +15,16 @@
  */
 
 import * as Debug from "debug";
-import {Events, Segment as LoaderSegment, LoaderInterface} from "p2p-media-loader-core";
-import {ParserSegment} from "./parser-segment";
+import { Events, Segment as LoaderSegment, LoaderInterface } from "p2p-media-loader-core";
+import { ParserSegment } from "./parser-segment";
+import { getMasterSwarmId } from "./utils";
+import { AssetsStorage } from "./engine";
 
-const defaultSettings: Settings = {
+const defaultSettings: SegmentManagerSettings = {
     forwardSegmentCount: 20,
-    maxHistorySegments: 50
+    maxHistorySegments: 50,
+    swarmId: undefined,
+    assetsStorage: undefined,
 };
 
 export class SegmentManager {
@@ -31,10 +35,10 @@ export class SegmentManager {
     private manifestUri: string = "";
     private playheadTime: number = 0;
     private readonly segmentHistory: ParserSegment[] = [];
-    private readonly settings: Settings;
+    private readonly settings: SegmentManagerSettings;
 
-    public constructor(loader: LoaderInterface, settings: any = {}) {
-        this.settings = Object.assign(defaultSettings, settings);
+    public constructor(loader: LoaderInterface, settings: Partial<SegmentManagerSettings> = {}) {
+        this.settings = { ...defaultSettings, ...settings };
 
         this.loader = loader;
         this.loader.on(Events.SegmentLoaded, this.onSegmentLoaded);
@@ -42,31 +46,42 @@ export class SegmentManager {
         this.loader.on(Events.SegmentAbort, this.onSegmentAbort);
     }
 
-    public destroy() {
+    public async destroy() {
         if (this.requests.size !== 0) {
             console.error("Destroying segment manager with active request(s)!");
+
+            for (const request of this.requests.values()) {
+                this.reportError(request, "Request aborted due to destroy call");
+            }
+
             this.requests.clear();
         }
 
         this.playheadTime = 0;
         this.segmentHistory.splice(0);
-        this.loader.destroy();
+
+        if (this.settings.assetsStorage !== undefined) {
+            await this.settings.assetsStorage.destroy();
+        }
+
+        await this.loader.destroy();
     }
 
     public getSettings() {
         return this.settings;
     }
 
-    public async load(parserSegment: ParserSegment, manifestUri: string, playheadTime: number): Promise<any> {
+    public async load(parserSegment: ParserSegment, manifestUri: string, playheadTime: number): Promise<{ data: ArrayBuffer, timeMs: number | undefined }> {
         this.manifestUri = manifestUri;
         this.playheadTime = playheadTime;
 
         this.pushSegmentHistory(parserSegment);
 
         const lastRequestedSegment = this.refreshLoad();
-        const alreadyLoadedSegment = this.loader.getSegment(lastRequestedSegment.id);
 
-        return new Promise<any>((resolve, reject) => {
+        const alreadyLoadedSegment = await this.loader.getSegment(lastRequestedSegment.id);
+
+        return new Promise<{ data: ArrayBuffer, timeMs: number | undefined }>((resolve, reject) => {
             const request = new Request(lastRequestedSegment.id, resolve, reject);
             if (alreadyLoadedSegment) {
                 this.reportSuccess(request, alreadyLoadedSegment);
@@ -110,18 +125,20 @@ export class SegmentManager {
             }
         } while (sequence.length < this.settings.forwardSegmentCount);
 
-        const manifestUriNoQuery = this.manifestUri.split("?")[ 0 ];
+        const masterSwarmId = getMasterSwarmId(this.manifestUri, this.settings);
 
-        const loaderSegments: LoaderSegment[] = sequence.map((s, i) => {
-            return new LoaderSegment(
-                `${manifestUriNoQuery}+${s.identity}`,
-                s.uri,
-                s.range,
-                i
-            );
-        });
+        const loaderSegments: LoaderSegment[] = sequence.map((s, i) => ({
+            id: `${masterSwarmId}+${s.streamIdentity}+${s.identity}`,
+            url: s.uri,
+            masterSwarmId: masterSwarmId,
+            masterManifestUri: this.manifestUri,
+            streamId: s.streamIdentity,
+            sequence: s.identity,
+            range: s.range,
+            priority: i,
+        }));
 
-        this.loader.load(loaderSegments, `${manifestUriNoQuery}+${lastRequestedSegment.streamIdentity}`);
+        this.loader.load(loaderSegments, `${masterSwarmId}+${lastRequestedSegment.streamIdentity}`);
         return loaderSegments[ lastRequestedSegmentIndex ];
     }
 
@@ -140,17 +157,14 @@ export class SegmentManager {
     }
 
     private reportSuccess(request: Request, loaderSegment: LoaderSegment) {
-        if (request.resolve) {
-            let timeDelation = 0;
-            if (loaderSegment.downloadSpeed > 0 && loaderSegment.data && loaderSegment.data.byteLength > 0) {
-                const downloadTime = Math.trunc(loaderSegment.data.byteLength / loaderSegment.downloadSpeed);
-                timeDelation = Date.now() - request.timeCreated + downloadTime;
-            }
-            setTimeout(() => {
-                this.debug("report success", request.id);
-                request.resolve(loaderSegment.data);
-            }, timeDelation);
+        let timeMs: number | undefined;
+
+        if (loaderSegment.downloadBandwidth !== undefined && loaderSegment.downloadBandwidth > 0 && loaderSegment.data && loaderSegment.data.byteLength > 0) {
+            timeMs = Math.trunc(loaderSegment.data.byteLength / loaderSegment.downloadBandwidth);
         }
+
+        this.debug("report success", request.id);
+        request.resolve({ data: loaderSegment.data!, timeMs });
     }
 
     private reportError(request: Request, error: any) {
@@ -187,15 +201,14 @@ export class SegmentManager {
 } // end of SegmentManager
 
 class Request {
-    readonly timeCreated: number = Date.now();
     public constructor(
         readonly id: string,
-        readonly resolve: any,
-        readonly reject: any
+        readonly resolve: (value: { data: ArrayBuffer, timeMs: number | undefined }) => void,
+        readonly reject: (reason?: any) => void
     ) {}
 }
 
-interface Settings {
+export interface SegmentManagerSettings {
     /**
      * Number of segments for building up predicted forward segments sequence; used to predownload and share via P2P
      */
@@ -205,4 +218,15 @@ interface Settings {
      * Maximum amount of requested segments manager should remember; used to build up sequence with correct priorities for P2P sharing
      */
     maxHistorySegments: number;
+
+    /**
+     * Override default swarm ID that is used to identify unique media stream with trackers (manifest URL without
+     * query parameters is used as the swarm ID if the parameter is not specified)
+     */
+    swarmId?: string;
+
+    /**
+     * A storage for the downloaded assets: manifests, subtitles, init segments, DRM assets etc. By default the assets are not stored.
+     */
+    assetsStorage?: AssetsStorage;
 }

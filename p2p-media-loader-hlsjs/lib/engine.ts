@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
-import {EventEmitter} from "events";
-import {Events, LoaderInterface, HybridLoader} from "p2p-media-loader-core";
-import {SegmentManager} from "./segment-manager";
-import {HlsJsLoader} from "./hlsjs-loader";
-import {createHlsJsLoaderClass} from "./hlsjs-loader-class";
+import { EventEmitter } from "events";
+import { Events, LoaderInterface, HybridLoader, HybridLoaderSettings } from "p2p-media-loader-core";
+import { SegmentManager, Byterange, SegmentManagerSettings } from "./segment-manager";
+import { HlsJsLoader } from "./hlsjs-loader";
+import { createHlsJsLoaderClass } from "./hlsjs-loader-class";
+
+export interface HlsJsEngineSettings {
+    loader: Partial<HybridLoaderSettings>;
+    segments: Partial<SegmentManagerSettings>;
+}
 
 export class Engine extends EventEmitter {
 
@@ -29,14 +34,14 @@ export class Engine extends EventEmitter {
     private readonly loader: LoaderInterface;
     private readonly segmentManager: SegmentManager;
 
-    public constructor(settings: any = {}) {
+    public constructor(settings: Partial<HlsJsEngineSettings> = {}) {
         super();
 
         this.loader = new HybridLoader(settings.loader);
         this.segmentManager = new SegmentManager(this.loader, settings.segments);
 
         Object.keys(Events)
-            .map(eventKey => Events[eventKey as any])
+            .map(eventKey => Events[eventKey as keyof typeof Events])
             .forEach(event => this.loader.on(event, (...args: any[]) => this.emit(event, ...args)));
     }
 
@@ -44,9 +49,8 @@ export class Engine extends EventEmitter {
         return createHlsJsLoaderClass(HlsJsLoader, this);
     }
 
-    public destroy() {
-        this.loader.destroy();
-        this.segmentManager.destroy();
+    public async destroy() {
+        await this.segmentManager.destroy();
     }
 
     public getSettings(): any {
@@ -56,8 +60,32 @@ export class Engine extends EventEmitter {
         };
     }
 
-    public setPlayingSegment(url: string) {
-        this.segmentManager.setPlayingSegment(url);
+    public getDetails(): any {
+        return {
+            loader: this.loader.getDetails()
+        };
     }
 
+    public setPlayingSegment(url: string, byterange: Byterange, start: number, duration: number) {
+        this.segmentManager.setPlayingSegment(url, byterange, start, duration);
+    }
+
+    public setPlayingSegmentByCurrentTime(playheadPosition: number) {
+        this.segmentManager.setPlayingSegmentByCurrentTime(playheadPosition);
+    }
+}
+
+export interface Asset {
+    masterSwarmId: string;
+    masterManifestUri: string;
+    requestUri: string;
+    requestRange?: string;
+    responseUri: string;
+    data: ArrayBuffer | string;
+}
+
+export interface AssetsStorage {
+    storeAsset(asset: Asset): Promise<void>;
+    getAsset(requestUri: string, requestRange: string | undefined, masterSwarmId: string): Promise<Asset | undefined>;
+    destroy(): Promise<void>;
 }

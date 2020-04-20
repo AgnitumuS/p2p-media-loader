@@ -14,26 +14,25 @@
  * limitations under the License.
  */
 
-import {getSchemedUri} from "./utils";
+import { getSchemedUri } from "./utils";
 
 export class ParserSegment {
 
-    public static create(stream: any, position: number): ParserSegment | undefined {
-        const ref = stream.getSegmentReferenceOriginal(position);
-        if (!ref) {
+    public static create(stream: any, segmentReference: any): ParserSegment | undefined {
+        if (!segmentReference) {
             return undefined;
         }
 
-        const uris = ref.createUris();
+        const uris = segmentReference.createUris();
         if (!uris || uris.length === 0) {
             return undefined;
         }
 
-        const start = ref.getStartTime();
-        const end = ref.getEndTime();
+        const start = segmentReference.getStartTime();
+        const end = segmentReference.getEndTime();
 
-        const startByte = ref.getStartByte();
-        const endByte = ref.getEndByte();
+        const startByte = segmentReference.getStartByte();
+        const endByte = segmentReference.getEndByte();
         const range = startByte || endByte
             ? `bytes=${startByte || ""}-${endByte || ""}`
             : undefined;
@@ -47,8 +46,8 @@ export class ParserSegment {
             : `${streamTypeCode}${stream.id}`;
 
         const identity = streamIsHls
-            ? `${streamIdentity}+${position}`
-            : `${streamIdentity}+${Number(start).toFixed(3)}`;
+            ? `${segmentReference.position}`
+            : `${Number(start).toFixed(3)}`;
 
         return new ParserSegment(
             stream.id,
@@ -56,13 +55,12 @@ export class ParserSegment {
             streamPosition,
             streamIdentity,
             identity,
-            position,
+            segmentReference.position,
             start,
             end,
             getSchemedUri(uris[ 0 ]),
             range,
-            () => ParserSegment.create(stream, position - 1),
-            () => ParserSegment.create(stream, position + 1)
+            () => ParserSegment.create(stream, stream.getSegmentReferenceOriginal(segmentReference.position - 1)),
         );
     }
 
@@ -77,7 +75,6 @@ export class ParserSegment {
         readonly end: number,
         readonly uri: string,
         readonly range: string | undefined,
-        readonly prev: () => ParserSegment | undefined,
         readonly next: () => ParserSegment | undefined
     ) {}
 
@@ -85,8 +82,8 @@ export class ParserSegment {
 
 export class ParserSegmentCache {
 
-    readonly segments: ParserSegment[] = [];
-    readonly maxSegments: number;
+    private readonly segments: ParserSegment[] = [];
+    private readonly maxSegments: number;
 
     public constructor(maxSegments: number) {
         this.maxSegments = maxSegments;
@@ -96,8 +93,8 @@ export class ParserSegmentCache {
         return this.segments.find(i => i.uri === uri && i.range === range);
     }
 
-    public add(stream: any, position: number) {
-        const segment = ParserSegment.create(stream, position);
+    public add(stream: any, segmentReference: any) {
+        const segment = ParserSegment.create(stream, segmentReference);
         if (segment && !this.find(segment.uri, segment.range)) {
             this.segments.push(segment);
             if (this.segments.length > this.maxSegments) {

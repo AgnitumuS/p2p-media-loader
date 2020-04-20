@@ -1,4 +1,5 @@
 /**
+ * @license Apache-2.0
  * Copyright 2018 Novage LLC.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +15,13 @@
  * limitations under the License.
  */
 
-import {Engine} from "./engine";
+export const version = "0.6.2";
+export * from "./engine";
+export * from "./segment-manager";
+
+import { Engine } from "./engine";
+
+declare const videojs: any;
 
 export function initHlsJsPlayer(player: any): void {
     if (player && player.config && player.config.loader && typeof player.config.loader.getEngine === "function") {
@@ -33,7 +40,7 @@ export function initClapprPlayer(player: any): void {
 }
 
 export function initFlowplayerHlsJsPlayer(player: any): void {
-    player.on("ready", () => initHlsJsPlayer(player.engine.hlsjs));
+    player.on("ready", () => initHlsJsPlayer(player.engine.hlsjs ? player.engine.hlsjs : player.engine.hls));
 }
 
 export function initVideoJsContribHlsJsPlayer(player: any): void {
@@ -45,20 +52,47 @@ export function initVideoJsContribHlsJsPlayer(player: any): void {
     });
 }
 
-export function initMediaElementJsPlayer(mediaElement: any): void {
-    mediaElement.addEventListener("hlsFragChanged", (event: any) => {
-        const url = event.data && event.data.length > 1 && event.data[ 1 ].frag ? event.data[ 1 ].frag.url : undefined;
-        const hls = mediaElement.hlsPlayer;
-        if (hls && hls.config && hls.config.loader && typeof hls.config.loader.getEngine === "function") {
-            const engine: Engine = hls.config.loader.getEngine();
-            engine.setPlayingSegment(url);
+export function initVideoJsHlsJsPlugin(): void {
+    if (videojs == undefined || videojs.Html5Hlsjs == undefined) {
+        return;
+    }
+
+    videojs.Html5Hlsjs.addHook("beforeinitialize", (videojsPlayer: any, hlsjs: any) => {
+        if (hlsjs.config && hlsjs.config.loader && typeof hlsjs.config.loader.getEngine === "function") {
+            initHlsJsEvents(hlsjs, hlsjs.config.loader.getEngine());
         }
     });
-    mediaElement.addEventListener("hlsDestroying", () => {
+}
+
+export function initMediaElementJsPlayer(mediaElement: any): void {
+    mediaElement.addEventListener("hlsFragChanged", (event: any) => {
         const hls = mediaElement.hlsPlayer;
         if (hls && hls.config && hls.config.loader && typeof hls.config.loader.getEngine === "function") {
             const engine: Engine = hls.config.loader.getEngine();
-            engine.destroy();
+
+            if (event.data && (event.data.length > 1)) {
+                const frag = event.data[1].frag;
+                const byterange = (frag.byteRange.length !== 2)
+                    ? undefined
+                    : { offset: frag.byteRange[0], length: frag.byteRange[1] - frag.byteRange[0] };
+                engine.setPlayingSegment(frag.url, byterange, frag.start, frag.duration);
+            }
+        }
+    });
+    mediaElement.addEventListener("hlsDestroying", async () => {
+        const hls = mediaElement.hlsPlayer;
+        if (hls && hls.config && hls.config.loader && typeof hls.config.loader.getEngine === "function") {
+            const engine: Engine = hls.config.loader.getEngine();
+            await engine.destroy();
+        }
+    });
+    mediaElement.addEventListener("hlsError", (event: any) => {
+        const hls = mediaElement.hlsPlayer;
+        if (hls && hls.config && hls.config.loader && typeof hls.config.loader.getEngine === "function") {
+            if ((event.data !== undefined) && (event.data.details === "bufferStalledError")) {
+                const engine: Engine = hls.config.loader.getEngine();
+                engine.setPlayingSegmentByCurrentTime(hls.media.currentTime);
+            }
         }
     });
 }
@@ -67,21 +101,32 @@ export function initJwPlayer(player: any, hlsjsConfig: any): void {
     const iid = setInterval(() => {
         if (player.hls && player.hls.config) {
             clearInterval(iid);
-            player.hls.config = Object.assign(player.hls.config, hlsjsConfig);
+            Object.assign(player.hls.config, hlsjsConfig);
             initHlsJsPlayer(player.hls);
         }
     }, 200);
 }
 
-export { Engine };
-export const version = "__VERSION__";
-
 function initHlsJsEvents(player: any, engine: Engine): void {
-    player.on("hlsFragChanged", function (event_unused: any, data: any) {
-        const url = data && data.frag ? data.frag.url : undefined;
-        engine.setPlayingSegment(url);
+    player.on("hlsFragChanged", (_event: any, data: any) => {
+        const frag = data.frag;
+        const byterange = (frag.byteRange.length !== 2)
+            ? undefined
+            : { offset: frag.byteRange[0], length: frag.byteRange[1] - frag.byteRange[0] };
+        engine.setPlayingSegment(frag.url, byterange, frag.start, frag.duration);
     });
-    player.on("hlsDestroying", function () {
-        engine.destroy();
+    player.on("hlsDestroying", async () => {
+        await engine.destroy();
+    });
+    player.on("hlsError", (_event: string, errorData: { details: string }) => {
+        if (errorData.details === "bufferStalledError") {
+            const htmlMediaElement = player.media === undefined
+                ? player.el_ // videojs-contrib-hlsjs
+                : player.media; // all others
+            if (htmlMediaElement === undefined) {
+                return;
+            }
+            engine.setPlayingSegmentByCurrentTime(htmlMediaElement.currentTime);
+        }
     });
 }

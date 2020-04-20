@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "es5",
+    "target": "es6",
     "module": "commonjs",
-    "lib": ["dom", "es6"],
+    "lib": ["es6"],
     "strict": true,
     "moduleResolution": "node",
     "declaration": true,
@@ -14,10 +14,10 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "noImplicitThis": true,
-    "noImplicitAny": true
+    "noImplicitAny": true,
+    "types": ["mocha", "node", "node-globals", "browser-stubs"],
+    "typeRoots" : ["./node_modules/@types", "./test/types"],
+    "baseUrl": "."
   },
-  "include": [
-    "lib/**/*",
-    "test/**/*"
-  ]
+  "compileOnSave": true
 }

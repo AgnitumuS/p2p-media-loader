@@ -1,5 +1,4 @@
 /**
- * @license
  * Copyright 2018 Novage LLC.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,4 +18,4 @@ if (!window.p2pml) {
     window.p2pml = {};
 }
 
-window.p2pml.core = require("p2p-media-loader-core");
+window.p2pml.core = require("./index");

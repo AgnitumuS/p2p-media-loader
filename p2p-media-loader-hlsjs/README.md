@@ -1,9 +1,14 @@
 # P2P Media Loader - Hls.js integration
 
-P2P sharing of segmented media streams (i.e. HLS) using WebRTC for [Hls.js](https://github.com/video-dev/hls.js)
+[![](https://data.jsdelivr.com/v1/package/npm/p2p-media-loader-hlsjs/badge)](https://www.jsdelivr.com/package/npm/p2p-media-loader-hlsjs)
+[![npm version](https://badge.fury.io/js/p2p-media-loader-hlsjs.svg)](https://npmjs.com/package/p2p-media-loader-hlsjs)
+
+P2P sharing of HLS media streams using WebRTC for [Hls.js](https://github.com/video-dev/hls.js)
 
 Useful links:
+- [P2P development, support & consulting](https://novage.com.ua/)
 - [Demo](http://novage.com.ua/p2p-media-loader/demo.html)
+- [FAQ](https://github.com/Novage/p2p-media-loader/blob/master/FAQ.md)
 - [Overview](http://novage.com.ua/p2p-media-loader/overview.html)
 - [Technical overview](http://novage.com.ua/p2p-media-loader/technical-overview.html)
 - JS CDN
@@ -43,9 +48,11 @@ General steps are:
                 source: "https://akamai-axtest.akamaized.net/routes/lapd-v1-acceptance/www_c4/Manifest.m3u8",
                 mute: true,
                 autoPlay: true,
-                hlsjsConfig: {
-                    liveSyncDurationCount: 7,
-                    loader: engine.createLoaderClass()
+                playback: {
+                    hlsjsConfig: {
+                        liveSyncDurationCount: 7,
+                        loader: engine.createLoaderClass()
+                    }
                 }
             });
 
@@ -68,6 +75,7 @@ The library uses `window.p2pml.hlsjs` as a root namespace in Web browser for:
 - `initJwPlayer` - [JW Player](https://www.jwplayer.com) integration
 - `initMediaElementJsPlayer` - [MediaElement.js](https://www.mediaelementjs.com) player integration
 - `initVideoJsContribHlsJsPlayer` - [Video.js](https://videojs.com) player integration
+- `initVideoJsHlsJsPlugin` - another [Video.js](https://videojs.com) player integration
 - `version` - API version
 
 ---
@@ -84,25 +92,71 @@ Returns result from `p2pml.core.HybridLoader.isSupported()`.
 
 Creates a new `Engine` instance.
 
-`settings` structure:
+`settings` object with the following fields:
 - `segments`
-    + `forwardSegmentCount` - Number of segments for building up predicted forward segments sequence; used to predownload and share via P2P. Default is 20;
+    + `forwardSegmentCount` - Number of segments for building up predicted forward segments sequence; used to predownload and share via P2P. Default is 20.
+    + `swarmId` - Override default swarm ID that is used to identify unique media stream with trackers (manifest URL without query parameters is used as the swarm ID if the parameter is not specified).
+    + `assetsStorage` - A storage for the downloaded assets: manifests, subtitles, init segments, DRM assets etc. By default the assets are not stored. Can be used to implement offline plabyack. See [AssetsStorage](#assetsstorage-interface) interface for details.
 - `loader`
-    + settings for `HybridLoader` (see _P2P Media Loader Core API_ for details);
+    + settings for `HybridLoader` (see [P2P Media Loader Core API](../p2p-media-loader-core/README.md#loader--new-hybridloadersettings) for details).
+
+### AssetsStorage interface
+```typescript
+interface Asset {
+    masterSwarmId: string;
+    masterManifestUri: string;
+    requestUri: string;
+    requestRange?: string;
+    responseUri: string;
+    data: ArrayBuffer | string;
+}
+
+interface AssetsStorage {
+    storeAsset(asset: Asset): Promise<void>;
+    getAsset(requestUri: string, requestRange: string | undefined, masterSwarmId: string): Promise<Asset | undefined>;
+    destroy(): Promise<void>;
+}
+```
+
+### `engine.on(event, handler)`
+
+Registers an event handler.
+
+- `event` - Event you want to handle; available events you can find [here](../p2p-media-loader-core/README.md#events).
+- `handler` - Function to handle the event
 
 ### `engine.getSettings()`
 
 Returns engine instance settings.
 
+### `engine.getDetails()`
+
+Returns engine instance details.
+
 ### `engine.createLoaderClass()`
 
 Creates hls.js loader class bound to this engine.
 
-### `engine.setPlayingSegment(url)`
+### `engine.setPlayingSegment(url, byterange)`
 
-Notifies engine about current playing segment url.
+Notifies engine about current playing segment.
 
-Needed for own integrations with other players. If you write one, you should update engine with current playing segment url from your player.
+Needed for own integrations with other players. If you write one, you should update engine with current playing segment from your player.
+
+`url` segment URL.
+
+`byterange` segment byte-range object with the following fields or undefined:
+- `offset` segment offset
+- `length` segment length
+
+
+### `engine.setPlayingSegmentByCurrentTime(playheadPosition)`
+
+Notifies engine about current playing segment by giving playhead position.
+
+Needed for own integrations with other players. If you write one, you should update engine with current playhead position. Currenly usefull only when playback stalls.
+
+`playheadPosition` Playhead position that is usually `HTMLMediaElement.currentTime`
 
 ### `engine.destroy()`
 
@@ -120,7 +174,7 @@ In order a player to be able to integrate with the Engine, it should meet follow
 3. Player allows to subcribe to events on hls.js player.
     - If player exposes `hls` object, you just call `p2pml.hlsjs.initHlsJsPlayer(hls)`;
     - Or if player allows to directly subsctibe to hls.js events, you need to handle:
-        + `hlsFragChanged` - call `engine.setPlayingSegment(url)` to notify Engine about current playing segment url;
+        + `hlsFragChanged` - call `engine.setPlayingSegment(url, byterange)` to notify Engine about current playing segment url;
         + `hlsDestroying` - call `engine.destroy()` to inform Engine about destroying hls.js player;
 
 ### `initHlsJsPlayer(player)`
@@ -159,9 +213,11 @@ var engine = new p2pml.hlsjs.Engine();
 var player = new Clappr.Player({
     parentId: "#video",
     source: "https://example.com/path/to/your/playlist.m3u8",
-    hlsjsConfig: {
-        liveSyncDurationCount: 7,
-        loader: engine.createLoaderClass()
+    playback: {
+        hlsjsConfig: {
+            liveSyncDurationCount: 7,
+            loader: engine.createLoaderClass()
+        }
     }
 });
 
@@ -187,7 +243,8 @@ var player = flowplayer("#video", {
     },
     hlsjs: {
         liveSyncDurationCount: 7,
-        loader: engine.createLoaderClass()
+        loader: engine.createLoaderClass(),
+        safari: true
     }
 });
 
@@ -210,8 +267,7 @@ player.setup({
     file: "https://example.com/path/to/your/playlist.m3u8"
 });
 
-var provider = require("@hola.org/jwplayer-hlsjs");
-provider.attach();
+jwplayer_hls_provider.attach();
 
 p2pml.hlsjs.initJwPlayer(player, {
     liveSyncDurationCount: 7,
@@ -266,6 +322,31 @@ var player = videojs("video", {
 });
 
 p2pml.hlsjs.initVideoJsContribHlsJsPlayer(player);
+
+player.src({
+    src: "https://example.com/path/to/your/playlist.m3u8",
+    type: "application/x-mpegURL"
+});
+```
+
+### `initVideoJsHlsJsPlugin()`
+
+Another [Video.js](https://videojs.com) player integration.
+
+Example
+```javascript
+var engine = new p2pml.hlsjs.Engine();
+
+p2pml.hlsjs.initVideoJsHlsJsPlugin();
+
+var player = videojs("video", {
+    html5: {
+        hlsjsConfig: {
+            liveSyncDurationCount: 7,
+            loader: engine.createLoaderClass()
+        }
+    }
+});
 
 player.src({
     src: "https://example.com/path/to/your/playlist.m3u8",

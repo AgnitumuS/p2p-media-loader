@@ -1,16 +1,21 @@
 # P2P Media Loader - Shaka Player integration
 
-P2P sharing of segmented media streams (i.e. HLS, DASH) using WebRTC for [Shaka Player](https://github.com/google/shaka-player)
+[![](https://data.jsdelivr.com/v1/package/npm/p2p-media-loader-shaka/badge)](https://www.jsdelivr.com/package/npm/p2p-media-loader-shaka)
+[![npm version](https://badge.fury.io/js/p2p-media-loader-shaka.svg)](https://npmjs.com/package/p2p-media-loader-shaka)
+
+P2P sharing of segmented media streams (i.e. HLS, MPEG-DASH) using WebRTC for [Shaka Player](https://github.com/google/shaka-player)
 
 Useful links:
+- [P2P development, support & consulting](https://novage.com.ua/)
 - [Demo](http://novage.com.ua/p2p-media-loader/demo.html)
+- [FAQ](https://github.com/Novage/p2p-media-loader/blob/master/FAQ.md)
 - [Overview](http://novage.com.ua/p2p-media-loader/overview.html)
 - [Technical overview](http://novage.com.ua/p2p-media-loader/technical-overview.html)
 - JS CDN
   - [Core](https://cdn.jsdelivr.net/npm/p2p-media-loader-core@latest/build/)
-  - [Shaka integration](https://cdn.jsdelivr.net/npm/p2p-media-loader-shaka@latest/build/)
+  - [Shaka Player integration](https://cdn.jsdelivr.net/npm/p2p-media-loader-shaka@latest/build/)
   - [Hls.js integration](https://cdn.jsdelivr.net/npm/p2p-media-loader-hlsjs@latest/build/)
- 
+
 ## Basic usage
 
 General steps are:
@@ -29,7 +34,7 @@ General steps are:
     <script src="https://cdn.jsdelivr.net/npm/p2p-media-loader-core@latest/build/p2p-media-loader-core.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/p2p-media-loader-shaka@latest/build/p2p-media-loader-shaka.min.js"></script>
     <script src="https://github.com/videojs/mux.js/releases/download/v4.4.0/mux.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/2.4.2/shaka-player.compiled.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/2.4.4/shaka-player.compiled.js"></script>
 </head>
 <body>
     <video id="video" width="640" controls autoplay muted></video>
@@ -76,14 +81,45 @@ Creates a new `Engine` instance.
 
 `settings` structure:
 - `segments`
-    + `forwardSegmentCount` - Number of segments for building up predicted forward segments sequence; used to predownload and share via P2P. Default is 20;
-    + `maxHistorySegments` - Maximum amount of requested segments manager should remember; used to build up sequence with correct priorities for P2P sharing. Default is 50;
+    + `forwardSegmentCount` - Number of segments for building up predicted forward segments sequence; used to predownload and share via P2P. Default is 20.
+    + `maxHistorySegments` - Maximum amount of requested segments manager should remember; used to build up sequence with correct priorities for P2P sharing. Default is 50.
+    + `swarmId` - Override default swarm ID that is used to identify unique media stream with trackers (manifest URL without query parameters is used as the swarm ID if the parameter is not specified).
+    + `assetsStorage` - A storage for the downloaded assets: manifests, subtitles, init segments, DRM assets etc. By default the assets are not stored. Can be used to implement offline plabyack. See [AssetsStorage](#assetsstorage-interface) interface for details.
 - `loader`
-    + settings for `HybridLoader` (see _P2P Media Loader Core API_ for details);
+    + settings for `HybridLoader` (see [P2P Media Loader Core API](../p2p-media-loader-core/README.md#loader--new-hybridloadersettings) for details).
+
+### AssetsStorage interface
+```typescript
+interface Asset {
+    masterSwarmId: string;
+    masterManifestUri: string;
+    requestUri: string;
+    requestRange?: string;
+    responseUri: string;
+    data: ArrayBuffer;
+}
+
+interface AssetsStorage {
+    storeAsset(asset: Asset): Promise<void>;
+    getAsset(requestUri: string, requestRange: string | undefined, masterSwarmId: string): Promise<Asset | undefined>;
+    destroy(): Promise<void>;
+}
+```
+
+### `engine.on(event, handler)`
+
+Registers an event handler.
+
+- `event` - Event you want to handle; available events you can find [here](../p2p-media-loader-core/README.md#events).
+- `handler` - Function to handle the event
 
 ### `engine.getSettings()`
 
 Returns engine instance settings.
+
+### `engine.getDetails()`
+
+Returns engine instance details.
 
 ### `engine.destroy()`
 

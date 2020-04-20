@@ -14,15 +14,19 @@
  * limitations under the License.
  */
 
-export class Segment {
-    public constructor(
-        readonly id: string,
-        readonly url: string,
-        readonly range: string | undefined,
-        readonly priority = 0,
-        readonly data: ArrayBuffer | undefined = undefined,
-        readonly downloadSpeed = 0
-    ) {}
+export interface Segment {
+    readonly id: string;
+    readonly url: string;
+    readonly masterSwarmId: string;
+    readonly masterManifestUri: string;
+    readonly streamId: string | undefined;
+    readonly sequence: string;
+    readonly range: string | undefined;
+    readonly priority: number;
+    data?: ArrayBuffer;
+    downloadBandwidth?: number;
+    requestUrl?: string;
+    responseUrl?: string;
 }
 
 export enum Events {
@@ -70,9 +74,10 @@ export enum Events {
 }
 
 export interface LoaderInterface {
-    on(eventName: string | symbol, listener: Function): this;
-    load(segments: Segment[], swarmId: string): void;
-    getSegment(id: string): Segment | undefined;
+    on(eventName: string, listener: (...params: any[]) => void): this;
+    load(segments: Segment[], streamSwarmId: string): void;
+    getSegment(id: string): Promise<Segment | undefined>;
     getSettings(): any;
-    destroy(): void;
+    getDetails(): any;
+    destroy(): Promise<void>;
 }

@@ -14,21 +14,22 @@
  * limitations under the License.
  */
 
-/// <reference path="../node_modules/@types/mocha/index.d.ts" />
 /// <reference path="../lib/declarations.d.ts" />
+/// <reference types="mocha" />
 
-import * as sinon from "sinon";
 import { mock, instance, when, anyFunction } from "ts-mockito";
+import * as assert from "assert";
 
-import {SegmentManager} from "../lib/segment-manager";
-import {Events, Segment, LoaderInterface} from "p2p-media-loader-core";
+import { SegmentManager } from "../lib/segment-manager";
+import { Events, Segment, LoaderInterface } from "p2p-media-loader-core";
 
 class LoaderInterfaceEmptyImpl implements LoaderInterface {
-    on(eventName: string | symbol, listener: Function): this { return this; }
-    load(segments: Segment[], swarmId: string): void { }
-    getSegment(id: string): Segment | undefined { return undefined; }
-    getSettings(): any { }
-    destroy(): void { }
+    public on(eventName: string | symbol, listener: Function): this { return this; }
+    public load(segments: Segment[], swarmId: string): void { }
+    public async getSegment(id: string): Promise<Segment | undefined> { return undefined; }
+    public getSettings(): any { }
+    public getDetails(): any { }
+    public async destroy(): Promise<void> { }
 }
 
 const testPlaylist = {
@@ -58,66 +59,90 @@ segment-1048.ts
 
 describe("SegmentManager", () => {
 
-    it("should call onSuccess after segment loading succeeded", () => {
+    it("should call succeed after segment loading succeeded", async () => {
         const loader = mock<LoaderInterface>(LoaderInterfaceEmptyImpl);
 
-        const onSuccess = sinon.spy();
-        let segmentLoadedListener: Function = () => { throw new Error("SegmentLoaded listener not set"); };
-        when(loader.on(Events.SegmentLoaded, anyFunction())).thenCall((eventName_unused, listener) => {
+        let segmentLoadedListener = (segment: Segment) => { throw new Error("SegmentLoaded listener not set"); };
+        when(loader.on(Events.SegmentLoaded, anyFunction())).thenCall((_eventName, listener) => {
             segmentLoadedListener = listener;
         });
 
-        const segment = new Segment("id", testPlaylist.baseUrl + "segment-1045.ts", undefined, 0, new ArrayBuffer(0));
+        const segment = new Segment(
+            "id",
+            testPlaylist.baseUrl + "segment-1045.ts",
+            testPlaylist.url,
+            testPlaylist.url,
+            undefined,
+            "1045",
+            undefined, 0, new ArrayBuffer(1));
 
         const manager = new SegmentManager(instance(loader));
-        manager.processPlaylist(testPlaylist.url, testPlaylist.content);
-        manager.loadSegment(segment.url, onSuccess, () => {});
+        manager.processPlaylist(testPlaylist.url, testPlaylist.content, testPlaylist.url);
+        const promise = manager.loadSegment(segment.url, undefined);
         segmentLoadedListener(segment);
 
-        onSuccess.calledWith(segment.data);
+        const result = await promise;
+
+        assert.deepEqual(result.content, segment.data);
     });
 
-    it("should call onError after segment loading failed", () => {
+    it("should fail after segment loading failed", async () => {
         const loader = mock<LoaderInterface>(LoaderInterfaceEmptyImpl);
 
-        const onError = sinon.spy();
-        let segmentErrorListener: Function = () => { throw new Error("SegmentError listener not set"); };
-        when(loader.on(Events.SegmentError, anyFunction())).thenCall((eventName_unused, listener) => {
+        let segmentErrorListener = (segment: Segment, error: any) => { throw new Error("SegmentError listener not set"); };
+        when(loader.on(Events.SegmentError, anyFunction())).thenCall((_eventName, listener) => {
             segmentErrorListener = listener;
         });
 
-        const url = testPlaylist.baseUrl + "segment-1045.ts";
         const error = "Test error message content";
 
-        const manager = new SegmentManager(instance(loader));
-        manager.processPlaylist(testPlaylist.url, testPlaylist.content);
-        manager.loadSegment(url, () => {}, onError);
-        segmentErrorListener(url, error);
+        const segment = new Segment(
+            "id",
+            testPlaylist.baseUrl + "segment-1045.ts",
+            testPlaylist.url,
+            testPlaylist.url,
+            undefined,
+            "1045",
+            undefined, 0, undefined);
 
-        onError.calledWith(error);
+        const manager = new SegmentManager(instance(loader));
+        manager.processPlaylist(testPlaylist.url, testPlaylist.content, testPlaylist.url);
+        const promise = manager.loadSegment(segment.url, undefined);
+        segmentErrorListener(segment, error);
+
+        try {
+            await promise;
+            assert.fail("should not succeed");
+        } catch (e) {
+            assert.equal(e, error);
+        }
     });
 
-    it("should not call onSuccess nor onError after abortSegment call", () => {
+    it("should return undefined content after abortSegment call", async () => {
         const loader = mock<LoaderInterface>(LoaderInterfaceEmptyImpl);
 
-        const onSuccess = sinon.spy();
-        let segmentLoadedListener: Function = () => { throw new Error("SegmentLoaded listener not set"); };
-        when(loader.on(Events.SegmentLoaded, anyFunction())).thenCall((eventName_unused, listener) => {
+        let segmentLoadedListener = (segment: Segment) => { throw new Error("SegmentLoaded listener not set"); };
+        when(loader.on(Events.SegmentLoaded, anyFunction())).thenCall((_eventName, listener) => {
             segmentLoadedListener = listener;
         });
 
-        const onError = sinon.spy();
-
-        const segment = new Segment("id", testPlaylist.baseUrl + "segment-1045.ts", undefined, 0, new ArrayBuffer(0));
+        const segment = new Segment(
+            "id",
+            testPlaylist.baseUrl + "segment-1045.ts",
+            testPlaylist.url,
+            testPlaylist.url,
+            undefined,
+            "1045",
+            undefined, 0, new ArrayBuffer(0));
 
         const manager = new SegmentManager(instance(loader));
-        manager.processPlaylist(testPlaylist.url, testPlaylist.content);
-        manager.loadSegment(segment.url, onSuccess, onError);
-        manager.abortSegment(segment.url);
+        manager.processPlaylist(testPlaylist.url, testPlaylist.content, testPlaylist.url);
+        const promise = manager.loadSegment(segment.url, undefined);
+        manager.abortSegment(segment.url, undefined);
         segmentLoadedListener(segment);
 
-        sinon.assert.notCalled(onSuccess);
-        sinon.assert.notCalled(onError);
+        const result = await promise;
+        assert.equal(result.content, undefined);
     });
 
 });

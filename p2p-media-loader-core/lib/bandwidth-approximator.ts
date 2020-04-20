@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-const SMOOTH_INTERVAL = 4 * 1000;
+const SMOOTH_INTERVAL = 1 * 1000;
 const MEASURE_INTERVAL = 60 * 1000;
 
 class NumberWithTime {
-    constructor (readonly value: number, readonly timeStamp: number) {}
+    constructor(readonly value: number, readonly timeStamp: number) {}
 }
 
-export class SpeedApproximator {
+export class BandwidthApproximator {
     private lastBytes: NumberWithTime[] = [];
     private currentBytesSum = 0;
-    private lastSpeed: NumberWithTime[] = [];
+    private lastBandwidth: NumberWithTime[] = [];
 
     public addBytes(bytes: number, timeStamp: number): void {
         this.lastBytes.push(new NumberWithTime(bytes, timeStamp));
@@ -34,23 +34,23 @@ export class SpeedApproximator {
             this.currentBytesSum -= this.lastBytes.shift()!.value;
         }
 
-        this.lastSpeed.push(new NumberWithTime(this.currentBytesSum / SMOOTH_INTERVAL, timeStamp));
+        this.lastBandwidth.push(new NumberWithTime(this.currentBytesSum / SMOOTH_INTERVAL, timeStamp));
     }
 
     // in bytes per millisecond
-    public getSpeed(timeStamp: number): number {
-        while (this.lastSpeed.length != 0 && timeStamp - this.lastSpeed[0].timeStamp > MEASURE_INTERVAL) {
-            this.lastSpeed.shift();
+    public getBandwidth(timeStamp: number): number {
+        while (this.lastBandwidth.length != 0 && timeStamp - this.lastBandwidth[0].timeStamp > MEASURE_INTERVAL) {
+            this.lastBandwidth.shift();
         }
 
-        let maxSpeed = 0;
-        for (const speed of this.lastSpeed) {
-            if (speed.value > maxSpeed) {
-                maxSpeed = speed.value;
+        let maxBandwidth = 0;
+        for (const bandwidth of this.lastBandwidth) {
+            if (bandwidth.value > maxBandwidth) {
+                maxBandwidth = bandwidth.value;
             }
         }
 
-        return maxSpeed;
+        return maxBandwidth;
     }
 
     public getSmoothInterval(): number {

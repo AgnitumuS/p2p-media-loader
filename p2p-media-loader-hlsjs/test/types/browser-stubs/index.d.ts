@@ -14,15 +14,10 @@
  * limitations under the License.
  */
 
-export default class SegmentInternal {
-    public lastAccessed = 0;
+type XMLHttpRequestResponseType = "" | "arraybuffer" | "blob" | "document" | "json" | "text";
 
-    public constructor (
-        readonly id: string,
-        readonly url: string,
-        readonly range: string | undefined,
-        readonly priority = 0,
-        readonly data: ArrayBuffer | undefined = undefined,
-        readonly downloadSpeed = 0
-    ) {}
+ declare class XMLHttpRequest {
+    [key: string]: any;
+    readonly response: any;
+    readonly responseURL: string;
 }
